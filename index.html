@@ -1,0 +1,74 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Things To Do</title>
+    <link rel="icon" type="image/x-icon" href="iconp.png">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="mapstyle1.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { width: 100%; height: 600px; }
+    </style>
+</head>
+<body>
+    <h2>Things To Do</h2>
+    <h3>Things to Eat in Pune</h3>
+    <div id="map"></div>
+
+    <script>
+        // Initialize map
+        var map = L.map('map').setView([18.5204, 73.8567], 13);
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Define food spots 
+        var foodspots = [
+            { name: "Camp Burger", coords: [18.5067, 73.8791], food: "Burger" },
+            { name: "Katakirr Misal", coords: [18.4876, 73.8243], food: "Misal Pav" },
+            { name: "Meredian Cafe", coords: [18.5235, 73.8412], food: "Ice Cream" },
+            { name: "Goodluck Café", coords: [18.5280, 73.8522], food: "Bun Maska Chai" }
+        ];
+
+        // Define custom food icon
+        var foodIcon = L.icon({
+            iconUrl: 'food.png', // Ensure this image exists in project
+            iconSize: [30, 30], // Icon size
+            iconAnchor: [20, 40], // Positioning
+            popupAnchor: [0, -35] // Popup positioning
+        });
+
+        // Add markers with the custom icon
+        foodspots.forEach(spot => {
+    L.marker(spot.coords, { icon: foodIcon })
+        .addTo(map)
+        .bindPopup(`<b>${spot.name}</b><br>${spot.food}`)
+        .bindTooltip(`${spot.food}`, { permanent: false, direction: "top" });
+});
+    
+        // Define a polygon representing the food area
+        var foodarea = [
+            [18.5067, 73.8791],
+            [18.4876, 73.8243],
+            [18.5235, 73.8412],
+            [18.5280, 73.8522]
+        ];
+        L.polygon(foodarea, { color: "orange", fillOpacity: 0.3 })
+            .addTo(map)
+            .bindPopup("Food Hub Area");
+
+        // Multi-polyline connecting food spots
+        var routes = [
+            [[18.5067, 73.8791], [18.4876, 73.8243]],
+            [[18.4876, 73.8243], [18.5235, 73.8412]],
+            [[18.5235, 73.8412], [18.5280, 73.8522]]
+        ];
+        L.polyline(routes, { color: "blue", weight: 3, dashArray: "5,5" })
+            .addTo(map)
+            .bindPopup("Street Food Route");
+    </script>
+</body>
+</html>
