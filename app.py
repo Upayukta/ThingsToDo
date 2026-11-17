@@ -3,14 +3,14 @@ import io
 import re
 import pandas as pd
 from pyproj import CRS
+from google.auth.credentials import AnonymousCredentials
 import streamlit as st
-from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import laspy
 from laspy import LazBackend
 
-st.title("⚡ High-Speed LiDAR CRS Checker")
+st.title("High-Speed LiDAR CRS Checker")
 st.write(
     "Instantly scans multi-GB `.laz` files from Google Drive by reading only"
     " their headers."
@@ -35,7 +35,14 @@ if folder_link:
   if st.button("Lightning Scan Projections"):
     try:
       folder_id = extract_folder_id(folder_link)
-      drive_service = build("drive", "v3", cache_discovery=False)
+
+      # Use AnonymousCredentials to prevent metadata server timeout errors on non-GCP hosts
+      drive_service = build(
+          "drive",
+          "v3",
+          credentials=AnonymousCredentials(),
+          cache_discovery=False,
+      )
 
       laz_files = []
 
@@ -69,7 +76,10 @@ if folder_link:
         scan_folder(folder_id)
 
       if not laz_files:
-        st.warning("No .laz files found in this folder.")
+        st.warning(
+            "No .laz files found. Ensure the folder is set to 'Anyone with the"
+            " link can view'."
+        )
       else:
         st.success(
             f"Found {len(laz_files)} .laz file(s). Scanning headers in"
@@ -85,7 +95,7 @@ if folder_link:
             request = drive_service.files().get_media(fileId=file_info["id"])
             buffer = io.BytesIO()
 
-            # SPEED TRICK: Download only the first 2 MB (Header & VLRs) instead of multi-GB payload
+            # Download only the first 2 MB (Header & VLRs) for speed
             downloader = MediaIoBaseDownload(
                 buffer, request, chunksize=2 * 1024 * 1024
             )
@@ -117,7 +127,6 @@ if folder_link:
             }
           return None
 
-        # Run checks in parallel threads for maximum speed
         with ThreadPoolExecutor(max_workers=5) as executor:
           futures = {
               executor.submit(check_file_header, f): f for f in laz_files
