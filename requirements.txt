@@ -1,0 +1,8 @@
+laspy[laszip]
+pyproj
+pandas
+openpyxl
+ipywidgets
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
