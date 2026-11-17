@@ -8,7 +8,7 @@ import laspy
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
-st.title("LiDAR CRS Projection Checker (Google Drive)")
+st.title("LiDAR CRS Projection Checker")
 st.write(
     "Paste a public Google Drive folder link containing `.laz` files to check"
     " their projections."
