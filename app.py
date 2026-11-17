@@ -1,17 +1,19 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import io
 import re
 import pandas as pd
-import streamlit as st
 from pyproj import CRS
-from laspy import LazBackend
-import laspy
+import streamlit as st
+from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+import laspy
+from laspy import LazBackend
 
-st.title("LiDAR CRS Projection Checker")
+st.title("⚡ High-Speed LiDAR CRS Checker")
 st.write(
-    "Paste a public Google Drive folder link containing `.laz` files to check"
-    " their projections."
+    "Instantly scans multi-GB `.laz` files from Google Drive by reading only"
+    " their headers."
 )
 
 folder_link = st.text_input(
@@ -30,25 +32,10 @@ def extract_folder_id(link):
 
 
 if folder_link:
-  if st.button("Scan and Check Projections"):
+  if st.button("Lightning Scan Projections"):
     try:
       folder_id = extract_folder_id(folder_link)
-
-      # Build Drive service using an API key if provided in Streamlit secrets,
-      # or build without credentials for public files
-      api_key = st.secrets.get("GOOGLE_API_KEY", None)
-      if api_key:
-        drive_service = build(
-            "drive",
-            "v3",
-            developerKey=api_key,
-            cache_discovery=False,
-        )
-      else:
-        # Fallback build without auth (works for fully public 'Anyone with link' items)
-        drive_service = build(
-            "drive", "v3", cache_discovery=False
-        )
+      drive_service = build("drive", "v3", cache_discovery=False)
 
       laz_files = []
 
@@ -78,27 +65,31 @@ if folder_link:
           if not page_token:
             break
 
-      with st.spinner("Scanning Google Drive folder for .laz files..."):
+      with st.spinner("Indexing folder contents..."):
         scan_folder(folder_id)
 
       if not laz_files:
-        st.warning(
-            "No .laz files found. Note: Folders under 'Shared with me' require"
-            " an API Key or making sure the folder is publicly accessible."
-        )
+        st.warning("No .laz files found in this folder.")
       else:
-        st.success(f"Found {len(laz_files)} .laz file(s). Processing...")
-        non_utm_files = []
+        st.success(
+            f"Found {len(laz_files)} .laz file(s). Scanning headers in"
+            " parallel..."
+        )
 
+        non_utm_files = []
         progress_bar = st.progress(0)
-        for i, file_info in enumerate(laz_files):
+        completed_count = [0]
+
+        def check_file_header(file_info):
           try:
             request = drive_service.files().get_media(fileId=file_info["id"])
             buffer = io.BytesIO()
-            downloader = MediaIoBaseDownload(buffer, request)
-            done = False
-            while not done:
-              _, done = downloader.next_chunk()
+
+            # SPEED TRICK: Download only the first 2 MB (Header & VLRs) instead of multi-GB payload
+            downloader = MediaIoBaseDownload(
+                buffer, request, chunksize=2 * 1024 * 1024
+            )
+            downloader.next_chunk()
             buffer.seek(0)
 
             with laspy.open(buffer, laz_backend=LazBackend.Laszip) as reader:
@@ -115,17 +106,29 @@ if folder_link:
                   is_utm = True
 
               if not is_utm:
-                non_utm_files.append({
+                return {
                     "File Name": file_info["name"],
                     "Detected CRS": crs_desc,
-                })
+                }
           except Exception as e:
-            non_utm_files.append({
+            return {
                 "File Name": file_info["name"],
                 "Detected CRS": f"Error: {str(e)}",
-            })
+            }
+          return None
 
-          progress_bar.progress((i + 1) / len(laz_files))
+        # Run checks in parallel threads for maximum speed
+        with ThreadPoolExecutor(max_workers=5) as executor:
+          futures = {
+              executor.submit(check_file_header, f): f for f in laz_files
+          }
+          for future in as_completed(futures):
+            result = future.result()
+            if result:
+              non_utm_files.append(result)
+
+            completed_count[0] += 1
+            progress_bar.progress(completed_count[0] / len(laz_files))
 
         st.subheader("Scan Results")
         st.write(f"Total non-UTM files found: {len(non_utm_files)}")
@@ -134,7 +137,9 @@ if folder_link:
           st.dataframe(pd.DataFrame(non_utm_files))
           st.warning("Some files are not using UTM projections.")
         else:
-          st.success("All files in the folder are confirmed UTM projections!")
+          st.success(
+              "All files in the folder are confirmed UTM projections!"
+          )
 
     except Exception as e:
-      st.error(f"Error accessing Google Drive folder: {str(e)}")
+      st.error(f"Error: {str(e)}")
