@@ -36,20 +36,20 @@ if folder_link:
     try:
       folder_id = extract_folder_id(folder_link)
 
-      # Authenticate using Streamlit secrets service account credentials
-      if "gcp_service_account" in st.secrets:
-        credentials = service_account.Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"],
-            scopes=["https://www.googleapis.com/auth/drive.readonly"],
-        )
-        drive_service = build(
-            "drive", "v3", credentials=credentials, cache_discovery=False
-        )
-      else:
-        st.error(
-            "Google Service Account secrets not found in Streamlit settings."
-        )
-        st.stop()
+   import json
+
+# Authenticate using the single JSON secret block
+if "GOOGLE_CREDENTIALS_JSON" in st.secrets:
+  cred_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
+  credentials = service_account.Credentials.from_service_account_info(
+      cred_dict, scopes=["https://www.googleapis.com/auth/drive.readonly"]
+  )
+  drive_service = build(
+      "drive", "v3", credentials=credentials, cache_discovery=False
+  )
+else:
+  st.error("GOOGLE_CREDENTIALS_JSON not found in Streamlit secrets.")
+  st.stop()
 
       laz_files = []
 
