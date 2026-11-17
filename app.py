@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import io
+import json
 import re
 import pandas as pd
 from pyproj import CRS
@@ -36,20 +37,18 @@ if folder_link:
     try:
       folder_id = extract_folder_id(folder_link)
 
-   import json
-
-# Authenticate using the single JSON secret block
-if "GOOGLE_CREDENTIALS_JSON" in st.secrets:
-  cred_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
-  credentials = service_account.Credentials.from_service_account_info(
-      cred_dict, scopes=["https://www.googleapis.com/auth/drive.readonly"]
-  )
-  drive_service = build(
-      "drive", "v3", credentials=credentials, cache_discovery=False
-  )
-else:
-  st.error("GOOGLE_CREDENTIALS_JSON not found in Streamlit secrets.")
-  st.stop()
+      # Authenticate using the single JSON secret block
+      if "GOOGLE_CREDENTIALS_JSON" in st.secrets:
+        cred_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
+        credentials = service_account.Credentials.from_service_account_info(
+            cred_dict, scopes=["https://www.googleapis.com/auth/drive.readonly"]
+        )
+        drive_service = build(
+            "drive", "v3", credentials=credentials, cache_discovery=False
+        )
+      else:
+        st.error("GOOGLE_CREDENTIALS_JSON not found in Streamlit secrets.")
+        st.stop()
 
       laz_files = []
 
@@ -99,7 +98,11 @@ else:
 
         def check_file_header(file_info):
           try:
-            request = drive_service.files().get_media(fileId=file_info["id"])
+            # Create a thread-local Drive client for thread safety
+            local_service = build(
+                "drive", "v3", credentials=credentials, cache_discovery=False
+            )
+            request = local_service.files().get_media(fileId=file_info["id"])
             buffer = io.BytesIO()
 
             downloader = MediaIoBaseDownload(
