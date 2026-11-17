@@ -1,4 +1,5 @@
 import os
+import io
 import tempfile
 import pandas as pd
 import streamlit as st
@@ -6,48 +7,54 @@ from pyproj import CRS
 from laspy import LazBackend
 import laspy
 
-st.title("LiDAR Projection Checker")
-st.write("Upload your `.laz` point cloud files to verify their spatial reference systems (UTM vs. Geographic).")
+st.title("LiDAR CRS Projection Checker")
+st.write("Upload your `.laz` point cloud files to verify if they use UTM projections.")
 
+# Streamlit file uploader (replaces Google Drive folder linking)
 uploaded_files = st.file_uploader("Upload .laz files", type=["laz"], accept_multiple_files=True)
 
 if uploaded_files:
-    if st.button("Run Projection Check"):
-        results = []
-
+    if st.button("Run CRS Check"):
+        non_utm_files = []
+        
         with st.spinner("Processing point cloud files..."):
             for uploaded_file in uploaded_files:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".laz") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
-
                 try:
-                    with laspy.open(tmp_path, laz_backend=LazBackend.Laszip) as las_file:
-                        header = las_file.header
-                        wkt_string = header.parse_crs().to_wkt()
-                        crs = CRS.from_wkt(wkt_string)
-                        is_geographic = crs.is_geographic
-
-                        results.append({
-                            "File Name": uploaded_file.name,
-                            "Coordinate System": crs.name,
-                            "Is Geographic (WGS84)": is_geographic
-                        })
+                    # Read uploaded file contents into memory
+                    laz_bytes = uploaded_file.read()
+                    
+                    with laspy.open(io.BytesIO(laz_bytes), laz_backend=LazBackend.Laszip) as reader:
+                        header = reader.header
+                        crs = header.parse_crs()
+                        
+                        is_utm = False
+                        crs_desc = "Missing or Unknown CRS"
+                        
+                        if crs:
+                            proj_crs = CRS.from_user_input(crs)
+                            crs_desc = proj_crs.name
+                            
+                            if proj_crs.is_projected and "UTM" in proj_crs.name.upper():
+                                is_utm = True
+                        
+                        if not is_utm:
+                            non_utm_files.append({
+                                "File Name": uploaded_file.name,
+                                "Detected CRS": crs_desc
+                            })
                 except Exception as e:
-                    results.append({
+                    non_utm_files.append({
                         "File Name": uploaded_file.name,
-                        "Coordinate System": f"Error: {str(e)}",
-                        "Is Geographic (WGS84)": "N/A"
+                        "Detected CRS": f"Error: {str(e)}"
                     })
-                finally:
-                    if os.path.exists(tmp_path):
-                        os.remove(tmp_path)
-
-        df_results = pd.DataFrame(results)
-        st.dataframe(df_results)
-
-        geo_count = df_results[df_results["Is Geographic (WGS84)"] == True].shape[0]
-        if geo_count > 0:
-            st.warning(f"Found {geo_count} file(s) mapped to a Geographic Coordinate System instead of UTM.")
+        
+        st.subheader("Scan Results")
+        st.write(f"Total files scanned: {len(uploaded_files)}")
+        st.write(f"Total non-UTM files found: {len(non_utm_files)}")
+        
+        if non_utm_files:
+            df_results = pd.DataFrame(non_utm_files)
+            st.dataframe(df_results)
+            st.warning("Some files are not using UTM projections.")
         else:
-            st.success("All files are correctly projected!")
+            st.success("All uploaded files are confirmed UTM projections!")
