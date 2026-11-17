@@ -37,9 +37,17 @@ if folder_link:
     try:
       folder_id = extract_folder_id(folder_link)
 
-      # Authenticate using the single JSON secret block
+# Authenticate using the single JSON secret block with safe newline replacement
       if "GOOGLE_CREDENTIALS_JSON" in st.secrets:
-        cred_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS_JSON"])
+        cred_raw = st.secrets["GOOGLE_CREDENTIALS_JSON"]
+        cred_dict = json.loads(cred_raw)
+
+        # Fix escaped newlines in private key if present
+        if "private_key" in cred_dict:
+          cred_dict["private_key"] = cred_dict["private_key"].replace(
+              "\\n", "\n"
+          )
+
         credentials = service_account.Credentials.from_service_account_info(
             cred_dict, scopes=["https://www.googleapis.com/auth/drive.readonly"]
         )
@@ -49,7 +57,6 @@ if folder_link:
       else:
         st.error("GOOGLE_CREDENTIALS_JSON not found in Streamlit secrets.")
         st.stop()
-
       laz_files = []
 
       def scan_folder(f_id):
