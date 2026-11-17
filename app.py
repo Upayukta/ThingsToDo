@@ -7,7 +7,6 @@ from laspy import LazBackend
 import laspy
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-from google.auth import default
 
 st.title("LiDAR CRS Projection Checker (Google Drive)")
 st.write(
@@ -35,10 +34,21 @@ if folder_link:
     try:
       folder_id = extract_folder_id(folder_link)
 
-      credentials, project = default()
-      drive_service = build(
-          "drive", "v3", credentials=credentials, cache_discovery=False
-      )
+      # Build Drive service using an API key if provided in Streamlit secrets,
+      # or build without credentials for public files
+      api_key = st.secrets.get("GOOGLE_API_KEY", None)
+      if api_key:
+        drive_service = build(
+            "drive",
+            "v3",
+            developerKey=api_key,
+            cache_discovery=False,
+        )
+      else:
+        # Fallback build without auth (works for fully public 'Anyone with link' items)
+        drive_service = build(
+            "drive", "v3", cache_discovery=False
+        )
 
       laz_files = []
 
@@ -73,8 +83,8 @@ if folder_link:
 
       if not laz_files:
         st.warning(
-            "No .laz files found. Make sure the folder link is correct and files"
-            " are shared publicly."
+            "No .laz files found. Note: Folders under 'Shared with me' require"
+            " an API Key or making sure the folder is publicly accessible."
         )
       else:
         st.success(f"Found {len(laz_files)} .laz file(s). Processing...")
