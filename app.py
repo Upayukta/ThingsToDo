@@ -1,6 +1,5 @@
 import io
 import re
-import tempfile
 import pandas as pd
 import streamlit as st
 from pyproj import CRS
@@ -16,7 +15,6 @@ st.write(
     " their projections."
 )
 
-# Input for Google Drive folder link
 folder_link = st.text_input(
     "Google Drive Folder Link:",
     placeholder="https://drive.google.com/drive/folders/...",
@@ -26,7 +24,6 @@ folder_link = st.text_input(
 def extract_folder_id(link):
   match = re.search(r"/folders/([a-zA-Z0-9_-]+)", link)
   if not match:
-    # Check if user just pasted the raw ID
     if len(link.strip()) > 20 and "/" not in link.strip():
       return link.strip()
     raise ValueError("Invalid Google Drive folder link or ID.")
@@ -38,8 +35,6 @@ if folder_link:
     try:
       folder_id = extract_folder_id(folder_link)
 
-      # Build public/default credentials client for Drive API
-      # Note: For public folders, API key or default auth works if files are shared with 'Anyone with the link'
       credentials, project = default()
       drive_service = build(
           "drive", "v3", credentials=credentials, cache_discovery=False
@@ -50,17 +45,18 @@ if folder_link:
       def scan_folder(f_id):
         page_token = None
         while True:
-          response =
-          drive_service.files()
-          .list(
-              q=f"'{f_id}' in parents and trashed=false",
-              pageSize=100,
-              pageToken=page_token,
-              fields="nextPageToken,files(id,name,mimeType,size)",
-              supportsAllDrives=True,
-              includeItemsFromAllDrives=True,
+          response = (
+              drive_service.files()
+              .list(
+                  q=f"'{f_id}' in parents and trashed=false",
+                  pageSize=100,
+                  pageToken=page_token,
+                  fields="nextPageToken,files(id,name,mimeType,size)",
+                  supportsAllDrives=True,
+                  includeItemsFromAllDrives=True,
+              )
+              .execute()
           )
-          .execute()
 
           for item in response.get("files", []):
             if item["mimeType"] == "application/vnd.google-apps.folder":
@@ -87,7 +83,6 @@ if folder_link:
         progress_bar = st.progress(0)
         for i, file_info in enumerate(laz_files):
           try:
-            # Download file chunk to memory
             request = drive_service.files().get_media(fileId=file_info["id"])
             buffer = io.BytesIO()
             downloader = MediaIoBaseDownload(buffer, request)
@@ -96,7 +91,6 @@ if folder_link:
               _, done = downloader.next_chunk()
             buffer.seek(0)
 
-            # Read with laspy
             with laspy.open(buffer, laz_backend=LazBackend.Laszip) as reader:
               header = reader.header
               crs = header.parse_crs()
