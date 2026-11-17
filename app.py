@@ -3,17 +3,17 @@ import io
 import re
 import pandas as pd
 from pyproj import CRS
-from google.auth.credentials import AnonymousCredentials
+from google.oauth2 import service_account
 import streamlit as st
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import laspy
 from laspy import LazBackend
 
-st.title("High-Speed LiDAR CRS Checker")
+st.title("⚡ High-Speed LiDAR CRS Checker")
 st.write(
-    "Instantly scans multi-GB `.laz` files from Google Drive by reading only"
-    " their headers."
+    "Instantly scans multi-GB `.laz` files from Google Drive using service"
+    " account auth."
 )
 
 folder_link = st.text_input(
@@ -36,13 +36,20 @@ if folder_link:
     try:
       folder_id = extract_folder_id(folder_link)
 
-      # Use AnonymousCredentials to prevent metadata server timeout errors on non-GCP hosts
-      drive_service = build(
-          "drive",
-          "v3",
-          credentials=AnonymousCredentials(),
-          cache_discovery=False,
-      )
+      # Authenticate using Streamlit secrets service account credentials
+      if "gcp_service_account" in st.secrets:
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=["https://www.googleapis.com/auth/drive.readonly"],
+        )
+        drive_service = build(
+            "drive", "v3", credentials=credentials, cache_discovery=False
+        )
+      else:
+        st.error(
+            "Google Service Account secrets not found in Streamlit settings."
+        )
+        st.stop()
 
       laz_files = []
 
@@ -77,8 +84,8 @@ if folder_link:
 
       if not laz_files:
         st.warning(
-            "No .laz files found. Ensure the folder is set to 'Anyone with the"
-            " link can view'."
+            "No .laz files found. Ensure the folder is shared with your service"
+            " account email."
         )
       else:
         st.success(
@@ -95,7 +102,6 @@ if folder_link:
             request = drive_service.files().get_media(fileId=file_info["id"])
             buffer = io.BytesIO()
 
-            # Download only the first 2 MB (Header & VLRs) for speed
             downloader = MediaIoBaseDownload(
                 buffer, request, chunksize=2 * 1024 * 1024
             )
